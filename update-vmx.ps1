@@ -23,6 +23,37 @@ Function Error($msg) {
     exit
 }
 
+Function post ($url, $user, $pass, $body, $return_error=$false) {
+    $pair = "$($user):$($pass)"
+    $bytes = [System.Text.Encoding]::ASCII.GetBytes($pair)
+    $base64 = [System.Convert]::ToBase64String($bytes)
+
+    $headers = @{
+        "Authorization" = "basic $base64"
+        "Content-Type" = "application/json"
+    }
+
+    try {
+        $request = Invoke-WebRequest -Uri $url -Body $body -Method POST -Headers $headers -SkipCertificateCheck 
+    } catch {
+        if ($return_error) {
+            return "`n($_)`n"
+            return "`n($_.Exception.Message)`n"
+        }
+        Debug "Error when doing a PUT $url with $body"
+        Debug "`n($_.Exception.Message)`n"
+        exit
+    }
+
+    if ($request.StatusCode -eq 201 -or $request.StatusCode -eq 200) {
+        Debug "Successfully ran POST $url"
+    } else {
+        Debug "Unknown State during PUT $url : $requests"
+        exit
+    }
+
+}
+
 Debug "Connect to VC"
 $vc = Connect-VIServer $vc_ip -User $vc_user  -WarningAction SilentlyContinue
 Debug "Connect to NSX"
@@ -55,6 +86,22 @@ foreach ($edge_cluster in $edge_clusters) {
                 Debug "nothing to do"
             } else {
                 debug "poweroff, and change vmx, power on and wait for status"
+
+                # Put Edge in Maintenance Mode
+                $json = [pscustomobject] @{
+                    "maintenance_mode" = "true"
+                }
+    
+                $body = $json | ConvertTo-Json -Depth 10
+                $url = "https://$nsx_ip/api/v1/node/maintenance-mode"
+                Debug "Putting Edge on Maintenance Mode: $edge_name"
+                $res = post $url $nsx.user $nsx.password $body
+exit
+                Shutdown-VMGuest -Server $vc $edge_vm -Confirm:$false
+
+
+ #               start-vm -Server $vc $edge_vm
+
             }
         }
     }
